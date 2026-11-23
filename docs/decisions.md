@@ -20,11 +20,27 @@ Ghi lại quyết định kỹ thuật ngay khi chọn, để lúc điền form 
   `Pgvector` về `0.3.1` (version tối thiểu mà `Pgvector.EntityFrameworkCore 0.2.2` yêu cầu) để tránh lỗi
   NU1605 "package downgrade". Nguồn: thử restore trực tiếp qua `dotnet add package`, đọc lỗi NU1605 chỉ ra
   chain dependency cụ thể.
-- (sẽ cập nhật tiếp khi gặp vấn đề thực tế trong lúc build: OpenAlex pagination/rate limit, decode
-  abstract_inverted_index, fuzzy name matching edge cases, CORS giữa Angular và .NET, v.v.)
+- **OpenAlex filter cú pháp range sai**: dùng `publication_date:2024-01-01..` (range mở) gây lỗi
+  "Invalid query parameters" — OpenAlex không hỗ trợ cú pháp `..` mở một đầu kiểu đó cho
+  `publication_date`. Test trực tiếp qua `curl` phát hiện field đúng cần dùng là
+  `from_publication_date:2024-01-01` (so sánh >=), không phải `publication_date` kèm range.
+  Sửa trong `OpenAlexClient.BuildUrl`. Đã verify qua `curl` thật: filter
+  `institutions.id:I157725225,from_publication_date:2024-01-01,type:article` trả về count=20814,
+  đúng trong khoảng 10k–20k mà đề yêu cầu.
+- **Lưu ý chất lượng dữ liệu OpenAlex**: một số affiliation trong `authorships[].institutions` có vẻ
+  gán nhầm (ví dụ bài báo tiếng Nga hoàn toàn không liên quan UIUC vẫn có 1 author gắn institution
+  "University of Illinois Urbana-Champaign"), đây là vấn đề chất lượng dữ liệu nguồn đã biết của
+  OpenAlex, không phải lỗi filter. Mitigation: `IngestionRunner` chỉ giữ paper nếu có ít nhất 1
+  authorship có `IsUiucAffiliated = true` sau khi check institution id ở từng authorship (không
+  chỉ dựa vào việc work match filter cấp work), và việc match tên với CSV 1000 giảng viên UIUC là
+  một lớp lọc chéo thêm: nếu không match được tên nào, paper vẫn được lưu kèm
+  `AuthorDisplayNames` để hiển thị nhưng không liên kết sai vào 1 giảng viên cụ thể.
+- (sẽ cập nhật tiếp khi gặp vấn đề thực tế trong lúc build: rate limit OpenAlex, CORS giữa Angular
+  và .NET, v.v.)
 
 ## Time log (để trả lời "Estimated Time Spent")
 
 | Date | Hours | Việc đã làm |
 |------|-------|-------------|
 | Day 1 | ~2h | Khởi tạo repo, scaffold Angular 17 frontend (standalone components, Material, portal + chat features), scaffold .NET 8 backend (Domain/Application/Infrastructure/Api/Ingestion, EF Core + pgvector, Groq LLM client stub, Gemini embedding client stub, 4 API controllers). Build sạch cả 2 phía. |
+| Day 1 | ~2h | OpenAlex client thật (cursor paging, decode abstract_inverted_index, verify qua curl + fix filter cú pháp `from_publication_date`), CSV importer + Postgres-array parser (test với 1000 dòng CSV thật), author name matcher (fuzzy match CSV ↔ OpenAlex), Ingestion orchestrator, EF Core migration (pgvector 768-dim). 11 automated tests (unit + 1 integration gọi OpenAlex thật), tất cả pass. |

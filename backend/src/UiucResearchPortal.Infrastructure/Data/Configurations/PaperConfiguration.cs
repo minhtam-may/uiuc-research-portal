@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Pgvector;
 using UiucResearchPortal.Domain.Entities;
@@ -32,8 +33,38 @@ public class PaperConfiguration : IEntityTypeConfiguration<Paper>
             .HasColumnType($"vector({EmbeddingDimensions})")
             .HasConversion(
                 v => v == null ? null : new Vector(v),
-                v => v == null ? null : v.ToArray());
+                v => v == null ? null : v.ToArray(),
+                new ValueComparer<float[]?>(
+                    (a, b) => EmbeddingsEqual(a, b),
+                    v => EmbeddingHashCode(v),
+                    v => v == null ? null : v.ToArray()));
 
         builder.HasIndex(p => p.PublicationDate);
+    }
+
+    private static bool EmbeddingsEqual(float[]? a, float[]? b)
+    {
+        if (a is null || b is null)
+        {
+            return a is null && b is null;
+        }
+
+        return a.AsSpan().SequenceEqual(b);
+    }
+
+    private static int EmbeddingHashCode(float[]? v)
+    {
+        if (v is null)
+        {
+            return 0;
+        }
+
+        var hash = new HashCode();
+        foreach (var x in v)
+        {
+            hash.Add(x);
+        }
+
+        return hash.ToHashCode();
     }
 }

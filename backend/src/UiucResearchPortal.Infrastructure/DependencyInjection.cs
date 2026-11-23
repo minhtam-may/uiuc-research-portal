@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using UiucResearchPortal.Application.Abstractions;
 using UiucResearchPortal.Infrastructure.Data;
 using UiucResearchPortal.Infrastructure.ExternalClients;
+using UiucResearchPortal.Infrastructure.ExternalClients.OpenAlex;
+using UiucResearchPortal.Infrastructure.DataImport;
 using UiucResearchPortal.Infrastructure.Repositories;
 
 namespace UiucResearchPortal.Infrastructure;
@@ -23,9 +25,13 @@ public static class DependencyInjection
 
         services.Configure<GroqOptions>(configuration.GetSection(GroqOptions.SectionName));
         services.Configure<GeminiEmbeddingOptions>(configuration.GetSection(GeminiEmbeddingOptions.SectionName));
+        services.Configure<OpenAlexOptions>(configuration.GetSection(OpenAlexOptions.SectionName));
 
         services.AddHttpClient<ILlmClient, GroqLlmClient>();
         services.AddHttpClient<IEmbeddingClient, GeminiEmbeddingClient>();
+        services.AddHttpClient<IOpenAlexClient, OpenAlexClient>();
+
+        services.AddScoped<ICsvResearcherImporter, CsvResearcherImporter>();
 
         return services;
     }

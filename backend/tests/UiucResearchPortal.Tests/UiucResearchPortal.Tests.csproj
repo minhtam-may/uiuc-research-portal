@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\UiucResearchPortal.Application\UiucResearchPortal.Application.csproj" />
     <ProjectReference Include="..\..\src\UiucResearchPortal.Domain\UiucResearchPortal.Domain.csproj" />
+    <ProjectReference Include="..\..\src\UiucResearchPortal.Infrastructure\UiucResearchPortal.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
