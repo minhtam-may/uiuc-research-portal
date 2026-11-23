@@ -134,7 +134,7 @@ Takes a few minutes depending on OpenAlex response times and embedding API rate 
 dotnet run --project src/UiucResearchPortal.Api
 ```
 
-API runs at `https://localhost:5080` (Swagger UI at `/swagger` in Development).
+API runs at `http://localhost:5070` (Swagger UI at `/swagger` in Development).
 
 ### Frontend
 
