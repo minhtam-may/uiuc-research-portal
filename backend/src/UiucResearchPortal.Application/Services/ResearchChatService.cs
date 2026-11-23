@@ -28,12 +28,11 @@ public class ResearchChatService
     {
         var queryEmbedding = await _embeddingClient.EmbedAsync(question, ct);
 
-        var papersTask = _retriever.FindRelevantPapersAsync(queryEmbedding, TopKPapers, ct);
-        var researchersTask = _retriever.FindRelevantResearchersAsync(question, TopKResearchers, ct);
-        await Task.WhenAll(papersTask, researchersTask);
-
-        var papers = papersTask.Result;
-        var researchers = researchersTask.Result;
+        // Sequential, not Task.WhenAll: both calls go through the same scoped IRagRetriever /
+        // AppDbContext, and EF Core's DbContext is not safe for concurrent operations on the
+        // same instance (see docs/decisions.md).
+        var papers = await _retriever.FindRelevantPapersAsync(queryEmbedding, TopKPapers, ct);
+        var researchers = await _retriever.FindRelevantResearchersAsync(question, TopKResearchers, ct);
 
         var systemPrompt = BuildSystemPrompt();
         var userPrompt = BuildUserPrompt(question, papers, researchers);

@@ -1,7 +1,9 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 using UiucResearchPortal.Application.Abstractions;
+using UiucResearchPortal.Domain.Entities;
 using UiucResearchPortal.Infrastructure.Data;
 
 namespace UiucResearchPortal.Infrastructure.Repositories;
@@ -58,9 +60,25 @@ public class RagRetriever : IRagRetriever
             return [];
         }
 
+        // Build "Keywords.Any(k => ILIKE(k, '%term%'))" per term and OR them together, rather than
+        // nesting terms.Any(...) around a DB-side Any(...): mixing a client-side array with a
+        // DB column inside a single nested LINQ Any is not guaranteed to translate with Npgsql.
+        // This keeps each term's predicate DB-translatable and just composes them with OrElse.
+        Expression<Func<Researcher, bool>>? predicate = null;
+        foreach (var term in terms)
+        {
+            var pattern = $"%{term}%";
+            Expression<Func<Researcher, bool>> termPredicate =
+                r => r.Keywords.Any(k => EF.Functions.ILike(k, pattern));
+
+            predicate = predicate is null
+                ? termPredicate
+                : Combine(predicate, termPredicate);
+        }
+
         var researchers = await _db.Researchers
             .AsNoTracking()
-            .Where(r => terms.Any(t => r.Keywords.Any(k => EF.Functions.ILike(k, $"%{t}%"))))
+            .Where(predicate!)
             .Take(topK * 3)
             .ToListAsync(ct);
 
@@ -75,5 +93,29 @@ public class RagRetriever : IRagRetriever
             .OrderByDescending(r => r.Score)
             .Take(topK)
             .ToList();
+    }
+
+    private static Expression<Func<Researcher, bool>> Combine(
+        Expression<Func<Researcher, bool>> left, Expression<Func<Researcher, bool>> right)
+    {
+        var parameter = left.Parameters[0];
+        var rightBody = new ReplaceParameterVisitor(right.Parameters[0], parameter).Visit(right.Body);
+        var combinedBody = Expression.OrElse(left.Body, rightBody!);
+        return Expression.Lambda<Func<Researcher, bool>>(combinedBody, parameter);
+    }
+
+    private class ReplaceParameterVisitor : ExpressionVisitor
+    {
+        private readonly ParameterExpression _from;
+        private readonly ParameterExpression _to;
+
+        public ReplaceParameterVisitor(ParameterExpression from, ParameterExpression to)
+        {
+            _from = from;
+            _to = to;
+        }
+
+        protected override Expression VisitParameter(ParameterExpression node) =>
+            node == _from ? _to : base.VisitParameter(node);
     }
 }

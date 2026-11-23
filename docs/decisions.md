@@ -35,6 +35,16 @@ Ghi lại quyết định kỹ thuật ngay khi chọn, để lúc điền form 
   chỉ dựa vào việc work match filter cấp work), và việc match tên với CSV 1000 giảng viên UIUC là
   một lớp lọc chéo thêm: nếu không match được tên nào, paper vẫn được lưu kèm
   `AuthorDisplayNames` để hiển thị nhưng không liên kết sai vào 1 giảng viên cụ thể.
+- **Rủi ro EF Core/Npgsql không dịch được nested LINQ `Any`**: `RagRetriever.FindRelevantResearchersAsync`
+  ban đầu viết `terms.Any(t => r.Keywords.Any(k => EF.Functions.ILike(k, $"%{t}%")))` — nested Any
+  trộn 1 mảng C# trong memory (`terms`, từ closure) với 1 cột DB (`r.Keywords`) bên trong 1 lambda.
+  Theo tài liệu Npgsql (npgsql.org/efcore/mapping/array.html), pattern được hỗ trợ chính thức là
+  dạng đơn `array.Any(s => EF.Functions.ILike(string, s))` dịch sang `ILIKE ANY`, không rõ có hỗ
+  trợ lồng 2 cấp Any như trên hay sẽ throw "could not be translated" lúc runtime (chưa test được
+  trực tiếp với DB thật tại thời điểm viết, do máy chưa có Docker/Postgres). Để tránh rủi ro, đổi
+  sang: build predicate riêng cho mỗi term (`Keywords.Any(k => ILIKE(k, pattern))`, đúng pattern
+  tài liệu xác nhận), rồi OR các predicate lại bằng `Expression.OrElse` + đổi parameter cho khớp,
+  thay vì nested Any 2 nguồn khác nhau. Sẽ verify lại bằng integration test thật khi có Postgres.
 - (sẽ cập nhật tiếp khi gặp vấn đề thực tế trong lúc build: rate limit OpenAlex, CORS giữa Angular
   và .NET, v.v.)
 
