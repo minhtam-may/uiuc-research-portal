@@ -1,0 +1,39 @@
+<section class="faculty">
+  <h2 class="faculty__title">Faculty Expertise</h2>
+
+  <mat-form-field appearance="outline" class="faculty__search">
+    <mat-icon matPrefix>search</mat-icon>
+    <input
+      matInput
+      placeholder="Search by name or keyword…"
+      [ngModel]="searchTerm()"
+      (ngModelChange)="onSearchInput($event)"
+    />
+  </mat-form-field>
+
+  <mat-spinner *ngIf="isLoading()" diameter="32"></mat-spinner>
+
+  <div class="faculty__grid" *ngIf="!isLoading()">
+    <mat-card *ngFor="let researcher of researchers()" class="faculty__card">
+      <img
+        *ngIf="researcher.photoUrl"
+        [src]="researcher.photoUrl"
+        [alt]="researcher.name"
+        class="faculty__photo"
+      />
+      <div *ngIf="!researcher.photoUrl" class="faculty__photo faculty__photo--placeholder">
+        {{ researcher.name.charAt(0) }}
+      </div>
+
+      <mat-card-title class="faculty__name">{{ researcher.name }}</mat-card-title>
+      <mat-card-subtitle *ngIf="researcher.position">{{ researcher.position }}</mat-card-subtitle>
+      <mat-card-content>
+        <p class="faculty__keywords">{{ researcher.keywords.slice(0, 5).join(', ') }}</p>
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <p *ngIf="!isLoading() && researchers().length === 0" class="faculty__empty">
+    No faculty found for this search.
+  </p>
+</section>

@@ -1,0 +1,20 @@
+<section class="publications">
+  <h2 class="publications__title">Recent Scholarly Output</h2>
+
+  <mat-spinner *ngIf="isLoading()" diameter="32"></mat-spinner>
+
+  <div class="publications__list" *ngIf="!isLoading()">
+    <mat-card *ngFor="let paper of papers()" class="publications__item">
+      <mat-card-title class="publications__paper-title">{{ paper.title }}</mat-card-title>
+      <mat-card-subtitle>{{ paper.publicationDate | date: 'mediumDate' }}</mat-card-subtitle>
+      <mat-card-content>
+        <p class="publications__authors" *ngIf="paper.authors.length">{{ authorNames(paper) }}</p>
+        <p class="publications__topics" *ngIf="paper.topics.length">{{ paper.topics.join(' · ') }}</p>
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <p *ngIf="!isLoading() && papers().length === 0" class="publications__empty">
+    No publications available yet.
+  </p>
+</section>

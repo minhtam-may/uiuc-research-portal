@@ -1,0 +1,16 @@
+<section class="focus-areas">
+  <h2 class="focus-areas__title">Key Research Focus Areas</h2>
+
+  <mat-spinner *ngIf="isLoading()" diameter="32"></mat-spinner>
+
+  <mat-chip-set *ngIf="!isLoading()">
+    <mat-chip *ngFor="let area of focusAreas()">
+      {{ area.keyword }}
+      <span class="focus-areas__count">{{ area.researcherCount }}</span>
+    </mat-chip>
+  </mat-chip-set>
+
+  <p *ngIf="!isLoading() && focusAreas().length === 0" class="focus-areas__empty">
+    No focus areas available yet.
+  </p>
+</section>

@@ -1,0 +1,28 @@
+.hero {
+  padding: 48px 24px;
+  text-align: center;
+  background: linear-gradient(135deg, #13294b 0%, #1a73e8 100%);
+  color: #fff;
+
+  &__title {
+    margin: 0 0 4px;
+    font-size: 28px;
+    font-weight: 700;
+  }
+
+  &__subtitle {
+    margin: 0 0 16px;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+
+  &__description {
+    max-width: 640px;
+    margin: 0 auto;
+    font-size: 15px;
+    line-height: 1.5;
+    opacity: 0.95;
+  }
+}

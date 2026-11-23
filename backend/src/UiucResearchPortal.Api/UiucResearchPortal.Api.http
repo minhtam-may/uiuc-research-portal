@@ -1,0 +1,6 @@
+@UiucResearchPortal.Api_HostAddress = http://localhost:5070
+
+GET {{UiucResearchPortal.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

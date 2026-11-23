@@ -1,0 +1,38 @@
+.publications {
+  padding: 32px 24px;
+  max-width: 960px;
+  margin: 0 auto;
+
+  &__title {
+    margin: 0 0 16px;
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  &__paper-title {
+    font-size: 15px;
+  }
+
+  &__authors {
+    font-size: 13px;
+    color: #3c4043;
+    margin: 4px 0;
+  }
+
+  &__topics {
+    font-size: 12px;
+    color: #5f6368;
+    margin: 0;
+  }
+
+  &__empty {
+    color: #5f6368;
+    font-size: 14px;
+  }
+}

@@ -1,0 +1,29 @@
+<button class="chat-fab" mat-fab color="primary" (click)="toggle()" aria-label="Open research assistant chat">
+  <mat-icon>{{ isOpen() ? 'close' : 'chat' }}</mat-icon>
+</button>
+
+<div class="chat-panel" *ngIf="isOpen()">
+  <header class="chat-panel__header">
+    <span>UIUC Research Assistant</span>
+  </header>
+
+  <div class="chat-panel__messages">
+    <app-message-bubble *ngFor="let message of messages()" [message]="message"></app-message-bubble>
+  </div>
+
+  <form class="chat-panel__input" (ngSubmit)="send()">
+    <mat-form-field appearance="outline" class="chat-panel__field">
+      <input
+        matInput
+        [ngModel]="question()"
+        (ngModelChange)="question.set($event)"
+        name="question"
+        placeholder="Ask about UIUC research…"
+        [disabled]="isSending()"
+      />
+    </mat-form-field>
+    <button mat-icon-button color="primary" type="submit" [disabled]="isSending() || !question().trim()">
+      <mat-icon>send</mat-icon>
+    </button>
+  </form>
+</div>

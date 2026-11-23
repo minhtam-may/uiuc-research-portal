@@ -1,0 +1,12 @@
+<div class="bubble" [class.bubble--user]="message.role === 'user'" [class.bubble--assistant]="message.role === 'assistant'">
+  <p class="bubble__content">{{ message.content }}</p>
+
+  <mat-icon *ngIf="message.pending" class="bubble__spinner">hourglass_empty</mat-icon>
+
+  <ul *ngIf="message.citations?.length" class="bubble__citations">
+    <li *ngFor="let citation of message.citations">
+      <a *ngIf="citation.url" [href]="citation.url" target="_blank" rel="noopener">{{ citation.label }}</a>
+      <span *ngIf="!citation.url">{{ citation.label }}</span>
+    </li>
+  </ul>
+</div>
