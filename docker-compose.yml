@@ -1,0 +1,18 @@
+# Local/Codespaces convenience: brings up Postgres + pgvector with one command.
+# Equivalent to the `docker run` command in README.md's "Start Postgres" step,
+# just declarative so Codespaces (or anyone) can run `docker compose up -d`.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: uiuc-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: uiuc_research_portal
+    ports:
+      - "5432:5432"
+    volumes:
+      - uiuc-pg-data:/var/lib/postgresql/data
+
+volumes:
+  uiuc-pg-data:

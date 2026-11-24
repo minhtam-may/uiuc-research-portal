@@ -72,6 +72,23 @@ Ghi lại quyết định kỹ thuật ngay khi chọn, để lúc điền form 
   dạng `https://doi.org/https://doi.org/10.xxx`. OpenAlex's `doi` field trả về sẵn URL đầy đủ
   (`https://doi.org/10.xxx`), không phải chỉ phần số DOI — `ResearchChatService.AnswerAsync` lại
   tự prepend thêm `https://doi.org/` một lần nữa. Sửa: dùng trực tiếp `p.Paper.Doi` không prepend.
+- **Quick-demo hosting: GitHub Codespaces, không phải Render/Vercel/Neon**: lúc đầu đã
+  chuẩn bị `render.yaml` (Render, Docker deploy) + `frontend/vercel.json` (Vercel static
+  site) + hướng dẫn Neon Postgres, và đã test build+run thật `backend/Dockerfile` qua
+  `docker build` + `docker run` thật (kết nối tới Postgres container local, verify
+  migration-on-startup chạy đúng, API + CORS hoạt động qua container). Sau đó user yêu
+  cầu "chỉ deploy bằng GitHub" — Render/Vercel/Neon đều không phải GitHub, nên đổi
+  hướng sang GitHub Codespaces (free tier 60 core-hours/tháng cho account cá nhân):
+  thêm `.devcontainer/devcontainer.json` (.NET 8 + Node 20 + docker-outside-of-docker
+  feature) và `docker-compose.yml` (Postgres+pgvector tự start qua `postCreateCommand`).
+  Xóa `render.yaml`/`vercel.json` khỏi repo vì không dùng nữa. `backend/Dockerfile` vẫn
+  giữ lại (đã verify chạy đúng) làm tài liệu sống cho việc containerize, dù không còn
+  cần cho path deploy hiện tại.
+  - Đánh đổi: Codespaces không cho URL public cố định để share link — chỉ xem được khi
+    người mở Codespace đang đăng nhập session đó (port forwarding tạm). Phù hợp cho
+    "xem thử nhanh lúc review", không phải "demo link gửi ai cũng xem được". Nếu cần
+    link public thật, vẫn phải quay lại Render/Vercel (free, nhưng không phải thuần
+    GitHub) hoặc `gh codespace ports visibility public` để public tạm 1 port.
 - (sẽ cập nhật tiếp khi gặp vấn đề thực tế trong lúc build: rate limit OpenAlex, CORS giữa Angular
   và .NET, v.v.)
 

@@ -1,0 +1,16 @@
+{
+  "name": "uiuc-research-portal",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:1-8.0",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "forwardPorts": [4200, 5070, 5432],
+  "portsAttributes": {
+    "4200": { "label": "Frontend (Angular)", "onAutoForward": "openPreview" },
+    "5070": { "label": "Backend API (.NET)", "onAutoForward": "notify" },
+    "5432": { "label": "Postgres", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "docker compose up -d && cd frontend && npm install",
+  "remoteUser": "vscode"
+}

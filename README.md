@@ -10,7 +10,9 @@ Assistant" technical assessment.
 
 ## Status
 
-🚧 In progress — scaffolding stage.
+✅ Functional end-to-end: ingestion pipeline, API, RAG chat, and frontend have all
+been run and tested against real data (not just built). See `docs/decisions.md`
+for the live log of what was verified and when.
 
 ## Project Structure
 
@@ -36,7 +38,7 @@ uiuc-research-portal/
 - **Backend**: .NET 8, ASP.NET Core Web API, EF Core
 - **Database**: PostgreSQL (free tier — Supabase/Neon) with `pgvector`
 - **LLM**: Groq API (free tier, Llama 3.1/3.3) for answer generation
-- **Embeddings**: Google Gemini `text-embedding-004` (free tier)
+- **Embeddings**: Google Gemini `gemini-embedding-001`, 768 dimensions (free tier)
 - **Data source**: [OpenAlex API](https://help.openalex.org/api/) (free, no key required to start)
 
 All components are free-tier / free-of-cost by design (see `docs/decisions.md`).
@@ -159,6 +161,34 @@ dotnet test --filter "Category=Integration"   # just the OpenAlex live-API check
 
 See [`docs/decisions.md`](docs/decisions.md) for the live-updated log of
 architectural decisions and trade-offs made during development.
+
+## Quick demo via GitHub Codespaces (no external hosting account needed)
+
+For a fast "just let me see it running" check without signing up for any
+hosting provider, this repo has a [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+so the whole stack — Postgres, .NET API, Angular frontend — runs inside a
+single free GitHub Codespace:
+
+1. On the repo's GitHub page: **Code** → **Codespaces** tab → **Create
+   codespace on main**. (Free personal GitHub accounts get 60 core-hours/month
+   free — plenty for a demo session.)
+2. Wait for the container to build (installs .NET 8, Node 20, and starts
+   Postgres+pgvector via `docker-compose.yml` automatically on first boot).
+3. In the Codespace's terminal, set your API keys and run the ingestion once
+   (same commands as **How to Run** below, steps 2–5) — Codespaces gives you
+   a normal Linux shell, so every command in this README works as-is.
+4. Run the API (`dotnet run --project backend/src/UiucResearchPortal.Api`)
+   and the frontend (`npm start` inside `frontend/`). Codespaces auto-detects
+   the forwarded ports (4200, 5070) and offers a "Open in Browser" popup, or
+   check the **Ports** tab.
+5. When you're done, stop or delete the Codespace from the Codespaces list
+   (https://github.com/codespaces) so it doesn't eat into the free monthly
+   hours while idle.
+
+This is for a quick look during review, not a permanently-online deployment —
+nothing here needs a long-lived public URL, and GitHub Codespaces keeps
+everything (code, secrets typed into the terminal, Postgres data) inside your
+own GitHub account rather than a third-party host.
 
 ## License
 
