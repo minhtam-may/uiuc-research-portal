@@ -17,13 +17,13 @@ namespace UiucResearchPortal.Ingestion;
 /// </summary>
 public class IngestionRunner
 {
-    private const int MaxWorksToFetch = 12_000;
     private static readonly DateOnly TwoYearsAgo = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-2));
 
     private readonly AppDbContext _db;
     private readonly ICsvResearcherImporter _csvImporter;
     private readonly IOpenAlexClient _openAlexClient;
     private readonly IEmbeddingClient _embeddingClient;
+    private readonly IngestionOptions _options;
     private readonly ILogger<IngestionRunner> _logger;
 
     public IngestionRunner(
@@ -31,12 +31,14 @@ public class IngestionRunner
         ICsvResearcherImporter csvImporter,
         IOpenAlexClient openAlexClient,
         IEmbeddingClient embeddingClient,
+        Microsoft.Extensions.Options.IOptions<IngestionOptions> options,
         ILogger<IngestionRunner> logger)
     {
         _db = db;
         _csvImporter = csvImporter;
         _openAlexClient = openAlexClient;
         _embeddingClient = embeddingClient;
+        _options = options.Value;
         _logger = logger;
     }
 
@@ -61,6 +63,9 @@ public class IngestionRunner
         {
             if (existingByEmail.TryGetValue(row.Email, out var existing))
             {
+                // The provided dataset has at least one duplicate email (same person listed
+                // twice); treat a repeat within this same run as an update to the row already
+                // seen, not a new insert — otherwise this throws a unique-constraint violation.
                 existing.Name = row.Name;
                 existing.PhotoUrl = row.PhotoUrl;
                 existing.Position = row.Position;
@@ -79,6 +84,7 @@ public class IngestionRunner
                     Keywords = row.Keywords.ToList()
                 };
                 _db.Researchers.Add(researcher);
+                existingByEmail[row.Email] = researcher;
                 imported.Add(researcher);
             }
         }
@@ -86,6 +92,10 @@ public class IngestionRunner
         await _db.SaveChangesAsync(ct);
         return imported;
     }
+
+    /// <summary>Small delay between embedding calls to stay under free-tier per-minute quotas proactively,
+    /// in addition to the reactive retry-with-backoff inside GeminiEmbeddingClient.</summary>
+    private static readonly TimeSpan EmbeddingThrottle = TimeSpan.FromMilliseconds(250);
 
     private async Task ImportPapersAsync(Dictionary<string, List<Researcher>> researcherNameIndex, CancellationToken ct)
     {
@@ -95,7 +105,7 @@ public class IngestionRunner
         var processed = 0;
         var newPapers = 0;
 
-        await foreach (var work in _openAlexClient.StreamUiucWorksAsync(TwoYearsAgo, MaxWorksToFetch, ct))
+        await foreach (var work in _openAlexClient.StreamUiucWorksAsync(TwoYearsAgo, _options.MaxWorksToFetch, ct))
         {
             processed++;
 
@@ -118,6 +128,7 @@ public class IngestionRunner
             try
             {
                 embedding = await _embeddingClient.EmbedAsync(embeddingText, ct);
+                await Task.Delay(EmbeddingThrottle, ct);
             }
             catch (Exception ex)
             {
@@ -152,6 +163,10 @@ public class IngestionRunner
             if (newPapers % 50 == 0)
             {
                 await _db.SaveChangesAsync(ct);
+                // Detach everything saved so far: without this, the change tracker keeps every
+                // Paper/PaperAuthor from the whole run (up to ~12,000), and per-entity
+                // change-detection cost grows accordingly as the run progresses.
+                _db.ChangeTracker.Clear();
                 _logger.LogInformation("Ingested {New} new papers so far ({Processed} processed)...", newPapers, processed);
             }
         }

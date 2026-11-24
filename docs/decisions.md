@@ -45,6 +45,33 @@ Ghi lại quyết định kỹ thuật ngay khi chọn, để lúc điền form 
   sang: build predicate riêng cho mỗi term (`Keywords.Any(k => ILIKE(k, pattern))`, đúng pattern
   tài liệu xác nhận), rồi OR các predicate lại bằng `Expression.OrElse` + đổi parameter cho khớp,
   thay vì nested Any 2 nguồn khác nhau. Sẽ verify lại bằng integration test thật khi có Postgres.
+- **Model names đã lỗi thời (test với key thật)**: sau khi có key Groq + Gemini thật, test trực
+  tiếp bằng `curl` phát hiện cả 2 default model đã chọn ban đầu không còn khả dụng:
+  - Gemini: `text-embedding-004` → 404. Model embedding hiện tại trên free tier là
+    `gemini-embedding-001`, output mặc định 3072 chiều. Dùng tham số `outputDimensionality: 768`
+    trong request để khớp đúng cột `vector(768)` đã migrate — verified qua curl (trả về đúng 768
+    giá trị). pgvector's cosine distance (`<=>`) tự chia theo L2 norm nên không cần tự normalize
+    thủ công dù Google doc gợi ý nên normalize khi dùng dimension < 3072 (xác nhận qua pgvector
+    GitHub docs).
+  - Groq: `llama-3.3-70b-versatile` → "model_not_found" (đã bị gỡ khỏi lineup). Gọi
+    `GET /v1/models` với key thật để lấy danh sách hiện có, chọn `openai/gpt-oss-120b` (chat
+    model, free tier) — verified trả lời đúng qua curl.
+  - Bài học: không hardcode tên model LLM/embedding provider third-party làm default lâu dài —
+    lineup các provider free tier thay đổi thường xuyên; nên luôn verify bằng 1 call thật trước
+    khi tin tưởng, và cấu hình qua appsettings để đổi được không cần build lại.
+- **Bug thật phát hiện ở lần chạy ingestion thật đầu tiên**: `DbUpdateException` duplicate key
+  trên `IX_researchers_Email`. Nguyên nhân: dataset CSV thật có 1 email trùng
+  (`c-cheng@illinois.edu` xuất hiện 2 lần, verified bằng script Python đếm trực tiếp trên CSV).
+  `ImportResearchersAsync` chỉ build `existingByEmail` từ DB hiện có trước khi loop; dòng CSV thứ
+  2 trùng email trong cùng lần chạy không được nhận diện là "đã thấy" (vì chưa `SaveChanges`), nên
+  cả 2 dòng cùng `_db.Researchers.Add(...)` → vi phạm unique constraint khi save. Sửa: thêm
+  researcher mới vào `existingByEmail` ngay sau khi `Add`, để dòng trùng tiếp theo trong cùng lần
+  chạy được coi là update thay vì insert. Đây là lý do tại sao "test với dữ liệu thật" (không chỉ
+  unit test với dữ liệu giả định sạch) là bắt buộc trước khi tin một pipeline ingestion.
+- **Bug: DOI URL bị double-prefix trong citation**: test `/api/chat` thật phát hiện citation URL
+  dạng `https://doi.org/https://doi.org/10.xxx`. OpenAlex's `doi` field trả về sẵn URL đầy đủ
+  (`https://doi.org/10.xxx`), không phải chỉ phần số DOI — `ResearchChatService.AnswerAsync` lại
+  tự prepend thêm `https://doi.org/` một lần nữa. Sửa: dùng trực tiếp `p.Paper.Doi` không prepend.
 - (sẽ cập nhật tiếp khi gặp vấn đề thực tế trong lúc build: rate limit OpenAlex, CORS giữa Angular
   và .NET, v.v.)
 

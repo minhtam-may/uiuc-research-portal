@@ -16,6 +16,7 @@ var services = new ServiceCollection();
 services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information));
 services.AddApplication();
 services.AddInfrastructure(configuration);
+services.Configure<IngestionOptions>(configuration.GetSection(IngestionOptions.SectionName));
 services.AddScoped<IngestionRunner>();
 
 using var provider = services.BuildServiceProvider();

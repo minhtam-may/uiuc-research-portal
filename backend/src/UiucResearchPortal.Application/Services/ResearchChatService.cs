@@ -41,7 +41,7 @@ public class ResearchChatService
 
         var citations = new List<ChatCitationDto>();
         citations.AddRange(papers.Select(p => new ChatCitationDto(
-            "paper", p.Paper.Id, p.Paper.Title, p.Paper.Doi is null ? null : $"https://doi.org/{p.Paper.Doi}")));
+            "paper", p.Paper.Id, p.Paper.Title, p.Paper.Doi)));
         citations.AddRange(researchers.Select(r => new ChatCitationDto(
             "researcher", r.Researcher.Id, r.Researcher.Name, null)));
 
