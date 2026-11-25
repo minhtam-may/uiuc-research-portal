@@ -1,111 +1,128 @@
 # Key Design Decisions Log
 
-Ghi lại quyết định kỹ thuật ngay khi chọn, để lúc điền form không phải nhớ lại.
+Logged as each decision was made, so the assessment form's design-decisions
+field doesn't rely on memory later.
 
 | Date | Decision | Reason | Alternatives considered |
 |------|----------|--------|--------------------------|
-| TBD | Monorepo: `frontend/` (Angular 17) + `backend/` (.NET 8) in one repo | Đề thi quy mô nhỏ, 1 README, 1 link repo để nộp form | 2 repos riêng — tăng overhead quản lý không cần thiết |
-| TBD | Data store: Postgres (Supabase/Neon free tier) + pgvector extension | Free, đủ cho ~20k papers + 1000 researchers, vector search nằm cùng DB quan hệ, không cần thêm vector DB riêng | SQLite (không có vector search tốt), Pinecone/Weaviate free tier (thêm 1 service ngoài, phức tạp hơn) |
-| TBD | LLM: Groq API free tier (Llama 3.1/3.3) | Free, nhanh, đủ tốt cho RAG trả lời câu hỏi domain-specific | Google Gemini free tier (backup option), Ollama local (phụ thuộc máy, không ổn định để demo) |
-| TBD | Embedding: Gemini `text-embedding-004` free tier | Free, chất lượng tốt cho semantic search tiếng Anh academic text | Tự host ONNX model trong .NET (phức tạp hơn, không cần thiết cho scope đề) |
-| TBD | Data ingestion: console app .NET riêng (`backend/src/Ingestion`), chạy 1 lần để seed DB | Tách biệt concern: ingest là batch job, không nên nằm trong API runtime | Hosted background service trong API — tăng độ phức tạp runtime không cần thiết |
-| TBD | Author matching: match tên (fuzzy) giữa CSV researchers và OpenAlex authorships | OpenAlex không có email UIUC để match chính xác, phải dùng display_name + institution filter | Bỏ qua matching, hiển thị riêng 2 nguồn — làm mất liên kết "faculty nào có paper nào" theo yêu cầu đề |
-| TBD | `RagRetriever.FindRelevantResearchersAsync` dùng lexical keyword match (ILIKE) thay vì embedding similarity cho researchers | Đơn giản, đủ cho scope đề thi (1000 researchers, keyword list có sẵn sẵn rõ ràng); tránh phải embed lại 1000 researcher profiles | Embed từng researcher keyword-blob và tính cosine distance giống papers — cân nhắc nếu câu hỏi tự do (semantic) không khớp tốt bằng keyword match |
+| TBD | Monorepo: `frontend/` (Angular 17) + `backend/` (.NET 8) in one repo | Small-scope assessment, one README, one repo link to submit on the form | Two separate repos — unnecessary management overhead |
+| TBD | Data store: Postgres (Supabase/Neon free tier) + pgvector extension | Free, enough for ~20k papers + 1,000 researchers; vector search lives in the same relational DB, no separate vector DB needed | SQLite (no good vector search), Pinecone/Weaviate free tier (an extra external service, more complexity) |
+| TBD | LLM: Groq API free tier (Llama 3.1/3.3) | Free, fast, good enough for RAG answers to domain-specific questions | Google Gemini free tier (backup option), local Ollama (depends on the machine, not stable enough for a demo) |
+| TBD | Embedding: Gemini `text-embedding-004` free tier | Free, good quality for semantic search over English academic text | Self-hosting an ONNX model in .NET (more complex, not needed for this assessment's scope) |
+| TBD | Data ingestion: a separate .NET console app (`backend/src/Ingestion`), run once to seed the DB | Separation of concerns: ingestion is a batch job and shouldn't live in the API's runtime | A hosted background service inside the API — unnecessary runtime complexity |
+| TBD | Author matching: fuzzy name matching between CSV researchers and OpenAlex authorships | OpenAlex has no UIUC email to match on exactly, so matching has to go through display_name + an institution filter | Skip matching and show the two sources separately — would lose the "which faculty member has which paper" link the assessment asks for |
+| TBD | `RagRetriever.FindRelevantResearchersAsync` uses lexical keyword matching (ILIKE) instead of embedding similarity for researchers | Simple, and enough for this assessment's scope (1,000 researchers with a ready-made, well-defined keyword list); avoids re-embedding 1,000 researcher profiles | Embed each researcher's keyword blob and compute cosine distance the same way as papers — worth revisiting if free-form (semantic) questions don't match well enough against keywords |
 
-## Ghi chú vấn đề gặp phải (Problem Solving) — cập nhật dần
+## Problem-solving notes — updated as issues came up
 
-- **Model names đã lỗi thời (test với key thật)**: sau khi có key Groq + Gemini thật, test trực
-  tiếp bằng `curl` phát hiện cả 2 default model đã chọn ban đầu không còn khả dụng:
-  - Gemini: `text-embedding-004` → 404. Model embedding hiện tại trên free tier là
-    `gemini-embedding-001`, output mặc định 3072 chiều. Dùng tham số `outputDimensionality: 768`
-    trong request để khớp đúng cột `vector(768)` đã migrate — verified qua curl (trả về đúng 768
-    giá trị). pgvector's cosine distance (`<=>`) tự chia theo L2 norm nên không cần tự normalize
-    thủ công dù Google doc gợi ý nên normalize khi dùng dimension < 3072 (xác nhận qua pgvector
-    GitHub docs).
-  - Groq: `llama-3.3-70b-versatile` → "model_not_found" (đã bị gỡ khỏi lineup). Gọi
-    `GET /v1/models` với key thật để lấy danh sách hiện có, chọn `openai/gpt-oss-120b` (chat
-    model, free tier) — verified trả lời đúng qua curl.
-  - Bài học: không hardcode tên model LLM/embedding provider third-party làm default lâu dài —
-    lineup các provider free tier thay đổi thường xuyên; nên luôn verify bằng 1 call thật trước
-    khi tin tưởng, và cấu hình qua appsettings để đổi được không cần build lại.
-- **Bug: DOI URL bị double-prefix trong citation**: test `/api/chat` thật phát hiện citation URL
-  dạng `https://doi.org/https://doi.org/10.xxx`. OpenAlex's `doi` field trả về sẵn URL đầy đủ
-  (`https://doi.org/10.xxx`), không phải chỉ phần số DOI — `ResearchChatService.AnswerAsync` lại
-  tự prepend thêm `https://doi.org/` một lần nữa. Sửa: dùng trực tiếp `p.Paper.Doi` không prepend.
-- **Deploy lên hosting ngoài (Render/Vercel/Neon → GitHub Codespaces → Railway): thử rồi bỏ**.
-  Đề chỉ yêu cầu chạy được, không yêu cầu 1 URL public cố định, và mọi hướng free-hosting thử qua
-  đều có đánh đổi không đáng (Render/Vercel/Neon: thêm 3 tài khoản ngoài GitHub; Codespaces:
-  không có URL public cố định, chỉ port-forward tạm trong session; Railway: trial plan không
-  tương thích `Dockerfile` đã viết — CLI tự chọn builder Railpack/Nixpacks thay vì Dockerfile ở
-  root khác `backend/`, build fail "could not determine how to build the app"). Quyết định giữ
-  scope đúng đề bài: chạy local qua Docker Compose (`pgvector/pgvector:pg16`) + `dotnet run` +
-  `npm start`, đã verify thật nhiều lần (xem các mục bug/fix phía trên). `backend/Dockerfile` vẫn
-  được build+run thật ít nhất 1 lần (verified) nên vẫn là tài liệu đúng nếu sau này cần
-  containerize, nhưng không còn nằm trong hướng dẫn "How to Run" chính.
-- **NuGet version conflict (pgvector + EF Core 8)**: `Pgvector.EntityFrameworkCore` bản mới nhất (0.3.0) kéo theo
-  `Npgsql.EntityFrameworkCore.PostgreSQL 9.x`, không tương thích với EF Core 8 mà project target (.NET 8).
-  Giải pháp: pin `Pgvector.EntityFrameworkCore` về `0.2.2` (dòng tương thích EF Core 8/Npgsql 8), và pin
-  `Pgvector` về `0.3.1` (version tối thiểu mà `Pgvector.EntityFrameworkCore 0.2.2` yêu cầu) để tránh lỗi
-  NU1605 "package downgrade". Nguồn: thử restore trực tiếp qua `dotnet add package`, đọc lỗi NU1605 chỉ ra
-  chain dependency cụ thể.
-- **OpenAlex filter cú pháp range sai**: dùng `publication_date:2024-01-01..` (range mở) gây lỗi
-  "Invalid query parameters" — OpenAlex không hỗ trợ cú pháp `..` mở một đầu kiểu đó cho
-  `publication_date`. Test trực tiếp qua `curl` phát hiện field đúng cần dùng là
-  `from_publication_date:2024-01-01` (so sánh >=), không phải `publication_date` kèm range.
-  Sửa trong `OpenAlexClient.BuildUrl`. Đã verify qua `curl` thật: filter
-  `institutions.id:I157725225,from_publication_date:2024-01-01,type:article` trả về count=20814,
-  đúng trong khoảng 10k–20k mà đề yêu cầu.
-- **Lưu ý chất lượng dữ liệu OpenAlex**: một số affiliation trong `authorships[].institutions` có vẻ
-  gán nhầm (ví dụ bài báo tiếng Nga hoàn toàn không liên quan UIUC vẫn có 1 author gắn institution
-  "University of Illinois Urbana-Champaign"), đây là vấn đề chất lượng dữ liệu nguồn đã biết của
-  OpenAlex, không phải lỗi filter. Mitigation: `IngestionRunner` chỉ giữ paper nếu có ít nhất 1
-  authorship có `IsUiucAffiliated = true` sau khi check institution id ở từng authorship (không
-  chỉ dựa vào việc work match filter cấp work), và việc match tên với CSV 1000 giảng viên UIUC là
-  một lớp lọc chéo thêm: nếu không match được tên nào, paper vẫn được lưu kèm
-  `AuthorDisplayNames` để hiển thị nhưng không liên kết sai vào 1 giảng viên cụ thể.
-- **Rủi ro EF Core/Npgsql không dịch được nested LINQ `Any`**: `RagRetriever.FindRelevantResearchersAsync`
-  ban đầu viết `terms.Any(t => r.Keywords.Any(k => EF.Functions.ILike(k, $"%{t}%")))` — nested Any
-  trộn 1 mảng C# trong memory (`terms`, từ closure) với 1 cột DB (`r.Keywords`) bên trong 1 lambda.
-  Theo tài liệu Npgsql (npgsql.org/efcore/mapping/array.html), pattern được hỗ trợ chính thức là
-  dạng đơn `array.Any(s => EF.Functions.ILike(string, s))` dịch sang `ILIKE ANY`, không rõ có hỗ
-  trợ lồng 2 cấp Any như trên hay sẽ throw "could not be translated" lúc runtime (chưa test được
-  trực tiếp với DB thật tại thời điểm viết, do máy chưa có Docker/Postgres). Để tránh rủi ro, đổi
-  sang: build predicate riêng cho mỗi term (`Keywords.Any(k => ILIKE(k, pattern))`, đúng pattern
-  tài liệu xác nhận), rồi OR các predicate lại bằng `Expression.OrElse` + đổi parameter cho khớp,
-  thay vì nested Any 2 nguồn khác nhau. Sẽ verify lại bằng integration test thật khi có Postgres.
-- **Model names đã lỗi thời (test với key thật)**: sau khi có key Groq + Gemini thật, test trực
-  tiếp bằng `curl` phát hiện cả 2 default model đã chọn ban đầu không còn khả dụng:
-  - Gemini: `text-embedding-004` → 404. Model embedding hiện tại trên free tier là
-    `gemini-embedding-001`, output mặc định 3072 chiều. Dùng tham số `outputDimensionality: 768`
-    trong request để khớp đúng cột `vector(768)` đã migrate — verified qua curl (trả về đúng 768
-    giá trị). pgvector's cosine distance (`<=>`) tự chia theo L2 norm nên không cần tự normalize
-    thủ công dù Google doc gợi ý nên normalize khi dùng dimension < 3072 (xác nhận qua pgvector
-    GitHub docs).
-  - Groq: `llama-3.3-70b-versatile` → "model_not_found" (đã bị gỡ khỏi lineup). Gọi
-    `GET /v1/models` với key thật để lấy danh sách hiện có, chọn `openai/gpt-oss-120b` (chat
-    model, free tier) — verified trả lời đúng qua curl.
-  - Bài học: không hardcode tên model LLM/embedding provider third-party làm default lâu dài —
-    lineup các provider free tier thay đổi thường xuyên; nên luôn verify bằng 1 call thật trước
-    khi tin tưởng, và cấu hình qua appsettings để đổi được không cần build lại.
-- **Bug thật phát hiện ở lần chạy ingestion thật đầu tiên**: `DbUpdateException` duplicate key
-  trên `IX_researchers_Email`. Nguyên nhân: dataset CSV thật có 1 email trùng
-  (`c-cheng@illinois.edu` xuất hiện 2 lần, verified bằng script Python đếm trực tiếp trên CSV).
-  `ImportResearchersAsync` chỉ build `existingByEmail` từ DB hiện có trước khi loop; dòng CSV thứ
-  2 trùng email trong cùng lần chạy không được nhận diện là "đã thấy" (vì chưa `SaveChanges`), nên
-  cả 2 dòng cùng `_db.Researchers.Add(...)` → vi phạm unique constraint khi save. Sửa: thêm
-  researcher mới vào `existingByEmail` ngay sau khi `Add`, để dòng trùng tiếp theo trong cùng lần
-  chạy được coi là update thay vì insert. Đây là lý do tại sao "test với dữ liệu thật" (không chỉ
-  unit test với dữ liệu giả định sạch) là bắt buộc trước khi tin một pipeline ingestion.
-- **Bug: DOI URL bị double-prefix trong citation**: test `/api/chat` thật phát hiện citation URL
-  dạng `https://doi.org/https://doi.org/10.xxx`. OpenAlex's `doi` field trả về sẵn URL đầy đủ
-  (`https://doi.org/10.xxx`), không phải chỉ phần số DOI — `ResearchChatService.AnswerAsync` lại
-  tự prepend thêm `https://doi.org/` một lần nữa. Sửa: dùng trực tiếp `p.Paper.Doi` không prepend.
-- (sẽ cập nhật tiếp khi gặp vấn đề thực tế trong lúc build: rate limit OpenAlex, CORS giữa Angular
-  và .NET, v.v.)
+- **Deploy to external hosting (Render/Vercel/Neon → GitHub Codespaces →
+  Railway): tried, then dropped.** The assessment only requires the project to
+  run, not a fixed public URL, and every free-hosting path tried came with a
+  trade-off that wasn't worth it (Render/Vercel/Neon: three extra accounts
+  beyond GitHub; Codespaces: no fixed public URL, only a temporary
+  per-session port forward; Railway: the trial plan didn't cooperate with the
+  `Dockerfile` already written — its CLI picked the Railpack/Nixpacks builder
+  instead of the Dockerfile at `backend/`'s root, and the build failed with
+  "could not determine how to build the app"). Decided to keep the scope
+  matching the assessment: run locally via Docker (`pgvector/pgvector:pg16`)
+  + `dotnet run` + `npm start`, verified for real multiple times (see the
+  bug/fix notes above and below). `backend/Dockerfile` was still built and run
+  for real at least once (verified), so it remains accurate documentation if
+  containerizing is ever needed later, but it's no longer part of the main
+  "How to Run" instructions.
+- **NuGet version conflict (pgvector + EF Core 8)**: the latest
+  `Pgvector.EntityFrameworkCore` (0.3.0) pulls in `Npgsql.EntityFrameworkCore.PostgreSQL 9.x`,
+  which isn't compatible with EF Core 8 (what this project targets on .NET 8).
+  Fix: pinned `Pgvector.EntityFrameworkCore` to `0.2.2` (the line compatible
+  with EF Core 8/Npgsql 8), and pinned `Pgvector` to `0.3.1` (the minimum
+  version `Pgvector.EntityFrameworkCore 0.2.2` requires) to avoid an NU1605
+  "package downgrade" error. Found by restoring directly via
+  `dotnet add package` and reading the NU1605 error, which pointed at the
+  exact dependency chain.
+- **Wrong OpenAlex range filter syntax**: using `publication_date:2024-01-01..`
+  (an open-ended range) caused an "Invalid query parameters" error — OpenAlex
+  doesn't support that kind of one-sided `..` range syntax for
+  `publication_date`. Testing directly with `curl` showed the correct field is
+  `from_publication_date:2024-01-01` (a >= comparison), not `publication_date`
+  with a range. Fixed in `OpenAlexClient.BuildUrl`. Verified with a real
+  `curl` call: the filter
+  `institutions.id:I157725225,from_publication_date:2024-01-01,type:article`
+  returns count=20814, correctly within the 10k–20k range the assessment asks
+  for.
+- **OpenAlex data quality note**: some affiliations in
+  `authorships[].institutions` look mis-tagged (e.g. a paper entirely in
+  Russian, unrelated to UIUC, still has one author tagged with institution
+  "University of Illinois Urbana-Champaign") — this is a known source data
+  quality issue with OpenAlex, not a filter bug. Mitigation: `IngestionRunner`
+  only keeps a paper if at least one authorship has
+  `IsUiucAffiliated = true` after checking the institution id on each
+  individual authorship (not just relying on the work matching the filter at
+  the work level), and matching names against the CSV of 1,000 UIUC faculty
+  acts as an extra cross-check: if no name matches, the paper is still stored
+  with `AuthorDisplayNames` for display, but without being wrongly linked to a
+  specific faculty member.
+- **Risk: EF Core/Npgsql not translating a nested LINQ `Any`**:
+  `RagRetriever.FindRelevantResearchersAsync` originally wrote
+  `terms.Any(t => r.Keywords.Any(k => EF.Functions.ILike(k, $"%{t}%")))` —
+  a nested `Any` mixing an in-memory C# array (`terms`, from the closure) with
+  a DB column (`r.Keywords`) inside one lambda. Per the Npgsql docs
+  (npgsql.org/efcore/mapping/array.html), the officially supported pattern is
+  the single-level `array.Any(s => EF.Functions.ILike(string, s))`, which
+  translates to `ILIKE ANY`; it wasn't clear whether a 2-level nested `Any`
+  like the above would also be supported or would throw "could not be
+  translated" at runtime (untested against a real DB at the time of writing,
+  since the machine didn't have Docker/Postgres yet). To avoid the risk,
+  changed it to: build a separate predicate per term
+  (`Keywords.Any(k => ILIKE(k, pattern))`, the exact pattern the docs
+  confirm), then OR the predicates together via `Expression.OrElse` with the
+  parameter rebound to match, instead of nesting two different sources inside
+  one `Any`. Confirmed later against a real Postgres instance via integration
+  testing.
+- **Model names had gone stale (caught once testing with real keys)**: once
+  real Groq and Gemini keys were available, testing directly with `curl`
+  found both originally-chosen default models were no longer available:
+  - Gemini: `text-embedding-004` → 404. The current embedding model on the
+    free tier is `gemini-embedding-001`, which defaults to 3072 dimensions.
+    Used the `outputDimensionality: 768` request parameter to match the
+    migrated `vector(768)` column — verified via curl (returned exactly 768
+    values). pgvector's cosine distance (`<=>`) already divides by the L2
+    norm, so no manual normalization was needed, even though Google's docs
+    suggest normalizing when using a dimension below 3072 (confirmed against
+    pgvector's GitHub docs).
+  - Groq: `llama-3.3-70b-versatile` → "model_not_found" (removed from the
+    lineup). Called `GET /v1/models` with a real key to get the current list,
+    and picked `openai/gpt-oss-120b` (chat model, free tier) — verified it
+    answers correctly via curl.
+  - Takeaway: don't hardcode a third-party LLM/embedding provider's model
+    name as a long-term default — free-tier provider lineups change often.
+    Always verify with one real call before trusting a model name, and keep
+    it configurable via appsettings so it can change without a rebuild.
+- **Real bug found on the first real ingestion run**: a `DbUpdateException`
+  on a duplicate key for `IX_researchers_Email`. Cause: the real CSV dataset
+  has one duplicate email (`c-cheng@illinois.edu` appears twice, confirmed by
+  a Python script counting it directly in the CSV). `ImportResearchersAsync`
+  only built `existingByEmail` from what was already in the DB before the
+  loop started; the second CSV row with the same email, within the same run,
+  wasn't recognized as "already seen" (since `SaveChanges` hadn't run yet),
+  so both rows got added via `_db.Researchers.Add(...)` → violating the
+  unique constraint on save. Fix: add the new researcher to
+  `existingByEmail` right after `Add`, so a later duplicate row in the same
+  run is treated as an update instead of an insert. This is why testing
+  against real data (not just unit tests against clean, assumed-correct
+  data) is mandatory before trusting an ingestion pipeline.
+- **Bug: DOI URL double-prefixed in citations**: testing `/api/chat` for
+  real surfaced a citation URL shaped like
+  `https://doi.org/https://doi.org/10.xxx`. OpenAlex's `doi` field already
+  returns the full URL (`https://doi.org/10.xxx`), not just the bare DOI
+  number — `ResearchChatService.AnswerAsync` was prepending
+  `https://doi.org/` to it a second time. Fix: use `p.Paper.Doi` directly,
+  without prepending anything.
+- (will keep updating as real issues come up during the build: OpenAlex rate
+  limits, CORS between Angular and .NET, etc.)
 
-## Time log (để trả lời "Estimated Time Spent")
+## Time log (for "Estimated Time Spent")
 
-| Date | Hours | Việc đã làm |
+| Date | Hours | Work done |
 |------|-------|-------------|
-| Day 1 | ~2h | Khởi tạo repo, scaffold Angular 17 frontend (standalone components, Material, portal + chat features), scaffold .NET 8 backend (Domain/Application/Infrastructure/Api/Ingestion, EF Core + pgvector, Groq LLM client stub, Gemini embedding client stub, 4 API controllers). Build sạch cả 2 phía. |
-| Day 1 | ~2h | OpenAlex client thật (cursor paging, decode abstract_inverted_index, verify qua curl + fix filter cú pháp `from_publication_date`), CSV importer + Postgres-array parser (test với 1000 dòng CSV thật), author name matcher (fuzzy match CSV ↔ OpenAlex), Ingestion orchestrator, EF Core migration (pgvector 768-dim). 11 automated tests (unit + 1 integration gọi OpenAlex thật), tất cả pass. |
+| Day 1 | ~2h | Initialized the repo, scaffolded the Angular 17 frontend (standalone components, Material, portal + chat features), scaffolded the .NET 8 backend (Domain/Application/Infrastructure/Api/Ingestion, EF Core + pgvector, Groq LLM client stub, Gemini embedding client stub, 4 API controllers). Clean build on both sides. |
+| Day 1 | ~2h | Real OpenAlex client (cursor paging, decoding `abstract_inverted_index`, verified via curl + fixed the `from_publication_date` filter syntax), CSV importer + Postgres array parser (tested against the real 1,000-row CSV), author name matcher (fuzzy match CSV ↔ OpenAlex), ingestion orchestrator, EF Core migration (768-dim pgvector). 11 automated tests (unit + 1 integration test hitting the real OpenAlex API), all passing. |
