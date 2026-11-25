@@ -14,6 +14,34 @@ Ghi lại quyết định kỹ thuật ngay khi chọn, để lúc điền form 
 
 ## Ghi chú vấn đề gặp phải (Problem Solving) — cập nhật dần
 
+- **Model names đã lỗi thời (test với key thật)**: sau khi có key Groq + Gemini thật, test trực
+  tiếp bằng `curl` phát hiện cả 2 default model đã chọn ban đầu không còn khả dụng:
+  - Gemini: `text-embedding-004` → 404. Model embedding hiện tại trên free tier là
+    `gemini-embedding-001`, output mặc định 3072 chiều. Dùng tham số `outputDimensionality: 768`
+    trong request để khớp đúng cột `vector(768)` đã migrate — verified qua curl (trả về đúng 768
+    giá trị). pgvector's cosine distance (`<=>`) tự chia theo L2 norm nên không cần tự normalize
+    thủ công dù Google doc gợi ý nên normalize khi dùng dimension < 3072 (xác nhận qua pgvector
+    GitHub docs).
+  - Groq: `llama-3.3-70b-versatile` → "model_not_found" (đã bị gỡ khỏi lineup). Gọi
+    `GET /v1/models` với key thật để lấy danh sách hiện có, chọn `openai/gpt-oss-120b` (chat
+    model, free tier) — verified trả lời đúng qua curl.
+  - Bài học: không hardcode tên model LLM/embedding provider third-party làm default lâu dài —
+    lineup các provider free tier thay đổi thường xuyên; nên luôn verify bằng 1 call thật trước
+    khi tin tưởng, và cấu hình qua appsettings để đổi được không cần build lại.
+- **Bug: DOI URL bị double-prefix trong citation**: test `/api/chat` thật phát hiện citation URL
+  dạng `https://doi.org/https://doi.org/10.xxx`. OpenAlex's `doi` field trả về sẵn URL đầy đủ
+  (`https://doi.org/10.xxx`), không phải chỉ phần số DOI — `ResearchChatService.AnswerAsync` lại
+  tự prepend thêm `https://doi.org/` một lần nữa. Sửa: dùng trực tiếp `p.Paper.Doi` không prepend.
+- **Deploy lên hosting ngoài (Render/Vercel/Neon → GitHub Codespaces → Railway): thử rồi bỏ**.
+  Đề chỉ yêu cầu chạy được, không yêu cầu 1 URL public cố định, và mọi hướng free-hosting thử qua
+  đều có đánh đổi không đáng (Render/Vercel/Neon: thêm 3 tài khoản ngoài GitHub; Codespaces:
+  không có URL public cố định, chỉ port-forward tạm trong session; Railway: trial plan không
+  tương thích `Dockerfile` đã viết — CLI tự chọn builder Railpack/Nixpacks thay vì Dockerfile ở
+  root khác `backend/`, build fail "could not determine how to build the app"). Quyết định giữ
+  scope đúng đề bài: chạy local qua Docker Compose (`pgvector/pgvector:pg16`) + `dotnet run` +
+  `npm start`, đã verify thật nhiều lần (xem các mục bug/fix phía trên). `backend/Dockerfile` vẫn
+  được build+run thật ít nhất 1 lần (verified) nên vẫn là tài liệu đúng nếu sau này cần
+  containerize, nhưng không còn nằm trong hướng dẫn "How to Run" chính.
 - **NuGet version conflict (pgvector + EF Core 8)**: `Pgvector.EntityFrameworkCore` bản mới nhất (0.3.0) kéo theo
   `Npgsql.EntityFrameworkCore.PostgreSQL 9.x`, không tương thích với EF Core 8 mà project target (.NET 8).
   Giải pháp: pin `Pgvector.EntityFrameworkCore` về `0.2.2` (dòng tương thích EF Core 8/Npgsql 8), và pin
@@ -72,23 +100,6 @@ Ghi lại quyết định kỹ thuật ngay khi chọn, để lúc điền form 
   dạng `https://doi.org/https://doi.org/10.xxx`. OpenAlex's `doi` field trả về sẵn URL đầy đủ
   (`https://doi.org/10.xxx`), không phải chỉ phần số DOI — `ResearchChatService.AnswerAsync` lại
   tự prepend thêm `https://doi.org/` một lần nữa. Sửa: dùng trực tiếp `p.Paper.Doi` không prepend.
-- **Quick-demo hosting: GitHub Codespaces, không phải Render/Vercel/Neon**: lúc đầu đã
-  chuẩn bị `render.yaml` (Render, Docker deploy) + `frontend/vercel.json` (Vercel static
-  site) + hướng dẫn Neon Postgres, và đã test build+run thật `backend/Dockerfile` qua
-  `docker build` + `docker run` thật (kết nối tới Postgres container local, verify
-  migration-on-startup chạy đúng, API + CORS hoạt động qua container). Sau đó user yêu
-  cầu "chỉ deploy bằng GitHub" — Render/Vercel/Neon đều không phải GitHub, nên đổi
-  hướng sang GitHub Codespaces (free tier 60 core-hours/tháng cho account cá nhân):
-  thêm `.devcontainer/devcontainer.json` (.NET 8 + Node 20 + docker-outside-of-docker
-  feature) và `docker-compose.yml` (Postgres+pgvector tự start qua `postCreateCommand`).
-  Xóa `render.yaml`/`vercel.json` khỏi repo vì không dùng nữa. `backend/Dockerfile` vẫn
-  giữ lại (đã verify chạy đúng) làm tài liệu sống cho việc containerize, dù không còn
-  cần cho path deploy hiện tại.
-  - Đánh đổi: Codespaces không cho URL public cố định để share link — chỉ xem được khi
-    người mở Codespace đang đăng nhập session đó (port forwarding tạm). Phù hợp cho
-    "xem thử nhanh lúc review", không phải "demo link gửi ai cũng xem được". Nếu cần
-    link public thật, vẫn phải quay lại Render/Vercel (free, nhưng không phải thuần
-    GitHub) hoặc `gh codespace ports visibility public` để public tạm 1 port.
 - (sẽ cập nhật tiếp khi gặp vấn đề thực tế trong lúc build: rate limit OpenAlex, CORS giữa Angular
   và .NET, v.v.)
 
